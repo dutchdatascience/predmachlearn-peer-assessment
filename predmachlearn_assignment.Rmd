@@ -1,0 +1,107 @@
+---
+title: "Practical Machine Learning - Prediction Assignment Writeup"
+author: "dutchdatascientist"
+date: "7/24/2015"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+# Executive summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+# Loading and preprocessing the data
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv.
+
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv.
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+```{r results='hide', message=FALSE, warning=FALSE}
+library(caret); library(randomForest)
+set.seed(1)
+start   <- Sys.time()
+pml     <- read.csv("pml-training.csv")
+pmltest <- read.csv("pml-testing.csv")
+```
+
+Drop columns with merely NA values:
+```{r}
+# set NA's
+pml[pml==""]       <- NA
+pml[pml=="#DIV/0"] <- NA
+
+pmltest[pmltest==""]       <- NA
+pmltest[pmltest=="#DIV/0"] <- NA
+
+# check how NA's are distributed
+table(colSums(is.na(pml)))
+dim(pml)
+# 100 columns have 19216 of NA's (and thus only 19622 - 19216 = 406 non-NA's)
+# drop columns with NA's:
+pmltest <- pmltest[, colSums(is.na(pml)) == 0] 
+pml <- pml[, colSums(is.na(pml)) == 0]
+```
+
+Drop columns with near zero variance.
+```{r}
+nsv     <- nearZeroVar(pml, saveMetrics=T)
+# drop these columns
+pml     <- pml[!nsv$nzv]
+pmltest <- pmltest[!nsv$nzv]
+```
+
+Drop other irrelevant columns.
+```{r}
+drops   <- c("X","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","num_window")
+pml     <- pml[,!(names(pml) %in% drops)]
+pmltest <- pmltest[,!(names(pmltest) %in% drops)]
+```
+
+# Training
+Creating the train data set
+```{r}
+inTrain  <- createDataPartition(y=pml$classe, p=0.9, list=F)
+training <- pml[inTrain,]
+testing  <- pml[-inTrain,]  
+```
+
+Train the model using random forest.
+```{r}
+modFit   <- randomForest(classe ~ . , data=training, preProc=c("center", "scale"))
+```
+
+# Estimate the error with cross-validation
+For random forest, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. See https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm
+
+# Conclusion
+Calculate the in sample error rate.
+```{r}
+train_pred         <- predict(modFit, training)
+training$predRight <- train_pred==training$classe
+insample_err       <- sum(training$predRight==F)/sum(training$predRight==T)
+```
+The in sample error rate is `r insample_err` %.
+
+
+Calculate the out of sample error rate.
+```{r}
+test_pred          <- predict(modFit, testing)
+testing$predRight  <- test_pred==testing$classe
+outsample_err      <- sum(testing$predRight==F)/sum(testing$predRight==T) * 100
+```
+The out of sample error rate is `r round(outsample_err,2)` %.
+
+
+# Results
+```{r}
+answers <- predict(modFit, pmltest)
+answers
+
+stop    <- Sys.time()
+runtime <- round(as.numeric((stop-start), units = "secs"),0)
+```
+Runtime of the report was `r runtime` seconds.
